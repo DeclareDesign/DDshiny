@@ -271,7 +271,7 @@ inspector.server <- function(input, output, clientData, session) {
 
   output$estimator <- renderUI({
     design_i <- req(DD$design_instance())
-    selectInput("estimator", "Estimator Label", choices = unique(get_estimates(design_i)$estimator_label))
+    selectInput("estimator", "Estimator Label", choices = unique(draw_estimates(design_i)$estimator_label))
   })
 
   output$diag_param <- renderUI({
@@ -284,9 +284,9 @@ inspector.server <- function(input, output, clientData, session) {
 
   output$coefficient <- renderUI({
     design_i <- req(DD$design_instance())
-    estimates <- get_estimates(design_i)
+    estimates <- draw_estimates(design_i)
     if("term" %in% names(estimates)) coefficients <- estimates$term[estimates$estimator_label == input$estimator]
-    # coefficients <- get_estimates(design_i)$term[get_estimates(design_i)$estimator_label == input$estimator]
+    # coefficients <- draw_estimates(design_i)$term[draw_estimates(design_i)$estimator_label == input$estimator]
     else coefficients <- ""
     selectInput("coefficient", "Coefficient", choices = coefficients)
   })
