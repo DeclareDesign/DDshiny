@@ -62,13 +62,6 @@ importUrl <- material_card("Import from URL",
                            actionButton("import_button", "OK")
 )
 
-# diagnostic_params <-       material_card(
-#   "Diagnostic Parameters",
-#   my_tipify(numericInput("d_sims", "Num of Sims:", 10), "The number of simulated populations are created."),
-#   my_tipify(numericInput("d_draws", "Num of Draws:", 50) ,"The number of samples drawn from each simulation."),
-#   actionButton("run", "Run Design")
-# )
-
 diagnostic_params <-       material_card(
   "Diagnostic Plot",
   my_tipify(numericInput("d_sims", "Num of Sims:", 10), "Diagnosand (y-axis)"),
@@ -177,16 +170,9 @@ inspector.server <- function(input, output, clientData, session) {
   # create design parameters from DD ----------------------------------------
 
   output$designParameters <- renderUI({
-    # loadDesign <- function(output, design_fn) {
-
     design_fn <- req(DD$design)
     v <- get_shiny_arguments(design_fn)
     f <- names(v)
-    # f <- names(formals(design_fn))[-length(formals(design_fn))] #remove `code` parameter
-    # v <- lapply(f, eval) # here we need to change to read from the attribute
-
-    # boxes <- mapply(textInput, paste0("d_", f), paste0(f, ":"),  v, SIMPLIFY = FALSE, USE.NAMES = FALSE)
-
     boxes <- list()
 
     #NOTE: This creates the input values from DD objects.
@@ -200,7 +186,6 @@ inspector.server <- function(input, output, clientData, session) {
       } else {
         boxes[[i]] <- selectInput(input_id, input_label, sort(v[[i]]), v[[i]][1])
       }
-
     }
 
 
@@ -212,38 +197,11 @@ inspector.server <- function(input, output, clientData, session) {
 
 
     #NOTE: Here is where we would need to change to take the vignette that is saved/exported by the function called on design (@Jasper)
-    #   if(DD$precomputed){
-    #     boxes[[length(boxes)+ 1]] <- remove_close_button_from_modal(material_modal("vignette", "Vignette...", title = "", uiOutput("vignette")))
-    #     boxes[[length(boxes)]][[2]][[1]]$attribs$style = "display:inline"
-    #     boxes[[length(boxes)+ 1]] <-  tags$script(
-    #       "$(document).on('change', 'select', function () {
-    #       Shiny.onInputChange('run', Math.random());
-    #       //Shiny.onInputChange('lastSelectName',name);
-    #       // to report changes on the same selectInput
-    #       //Shiny.onInputChange('lastSelect', Math.random());
-    #   });")
-    #     boxes[[length(boxes) + 1]] <- tags$script("
-    #                                               $(document).ready(function(){
-    #                                               // the href attribute of the modal trigger must specify the modal ID that wants to be triggered
-    #                                               $('.modal').modal()
-    #                                               });"
-    #     )
-    #
-    # }
-
     boxes[[length(boxes) + 1]] <- downloadButton("download_design", "Export Design...")
-
-
     do.call(material_card, c(title="Design Parameters", boxes))
-
   })
 
-
-
   output$plotParameters <- renderUI({
-
-    # diagnosis <- DD$diagnosis_instance()
-    # diagnosand_names <- diagnosis$diagnosand_names
     design_fn <- req(DD$design)
     f <- names(get_shiny_arguments(design_fn))
 
@@ -265,7 +223,6 @@ inspector.server <- function(input, output, clientData, session) {
     for(i in 1:length(boxes)){
       boxes[[i]] <- my_tipify(boxes[[i]], tips[i])
     }
-
     do.call(material_card, c(title="Plot Parameters", boxes))
   })
 
@@ -301,8 +258,6 @@ inspector.server <- function(input, output, clientData, session) {
         DD$design <- get(paste0(query[['import_library']], "_designer"), e)
         DD$precomputed <- TRUE
         DD$diagnosis <- readRDS(paste0("data/", query[['import_library']], "_shiny_diagnosis.RDS"))
-        # DD$diagnosis <- diagnosis$diagnosis
-        # DD$args_code <- diagnosis$argument_list
         session$sendCustomMessage(type = "closeModal", "#welcome_modal")
 
         message("loaded sidefile")
@@ -310,51 +265,18 @@ inspector.server <- function(input, output, clientData, session) {
                                   console.log('sidefile loaded')
                                   Shiny.onInputChange('import_button', 99999)
                                   "))
-
       }else{
         welcome
       }
     }else{
       welcome
     }
-
-
-    # if("topic" %in% names(query)){
-    #   # fname <- file.path(getOption("design.library.path", "~/cache"), paste0(query$topic, ".Rdata"))
-    #   fname <- file.path(getOption("design.library.path", "~/cache"), paste0(query$topic, ".Rdata"))
-    #   if(file.exists(fname)) {
-    #     load(fname, envir = .GlobalEnv)
-    #     DD$precomputed <- TRUE
-    #     DD$design <- designer
-    #     message("loaded topic")
-    #     return(shiny::tags$script("
-    #                               console.log('topic loaded')
-    #                               Shiny.onInputChange('import_button', 99999)
-    #                               "))
-    #   }
-    #
-    #   }
   })
 
 
   output$diagnosticParameters <- renderUI({
     if(!DD$precomputed) diagnostic_params
   })
-
-
-  # observeEvent(input$import_library, {
-  #   DD$design <- NULL
-  #   output$import_panel_choice <- renderUI(importLibrary)
-  # }, ignoreInit = TRUE)
-  # observeEvent(input$import_url,     {
-  #   DD$design <- NULL
-  #   output$import_panel_choice <- renderUI(importUrl)
-  # }, ignoreInit = TRUE)
-  # observeEvent(input$import_file,    {
-  #   DD$design <- NULL
-  #   output$import_panel_choice <- renderUI(importFile)
-  # }, ignoreInit = TRUE)
-
 
   observeEvent(input$import_button, {
     # req(input$import_file_button)
@@ -385,48 +307,21 @@ inspector.server <- function(input, output, clientData, session) {
 
   #NOTE: HERE WE ARE DRAWING DESIGN LIBRARIES FROM THE DesignLibrary folder (currently local)
   output$import_library_ui <- renderUI({
-    # my_design_library_path <- getOption("design.library.path", "~/cache")
-    # addResourcePath('datasets', system.file('data', package='DesignLibrary'))
-    # my_design_library_path <- "../designs" #NOTE: adapt to final path
-    # cached <- dir(paste0(my_design_library_path, "/R"), "_designer[.]R$", full.names = TRUE)
     cached <- str_replace(grep("designer$", ls(as.environment("package:DesignLibrary")), value = TRUE), "_designer", "")
     cached <- intersect(cached, gsub("_shiny_diagnosis.RDS", "", list.files("data", pattern = ".RDS")))
-    # cached <- c("simple_two_arm_designer", "regression_discontinuity_designer")
-    # cached <- dir(my_design_library_path, "[.]Rdata$", full.names = TRUE)
     names(cached) <- unique(str_to_title(str_replace_all(str_replace(basename(cached), "[.]R$", ""), "_", " ")))
     selectInput("import_library_dropdown", "Library:", cached)
   })
 
   observeEvent(input$import_library_dropdown,{
     if(paste0(input$import_library_dropdown, "_designer") %in% ls(as.environment("package:DesignLibrary"))){ #NOTE: change this here
-      # load(input$import_library_dropdown, envir = .GlobalEnv)
-      # design_label <- str_extract(input$import_library_dropdown, pattern = "(?<=R/).*(?=_designer\\.R)")
-      # design_label <- input$import_library_dropdown
-      #set package environment
       e <- as.environment("package:DesignLibrary")
       DD$design <- get(paste0(input$import_library_dropdown, "_designer"), e)
     }
     DD$precomputed <- TRUE
     DD$diagnosis <- readRDS(paste0("data/", input$import_library_dropdown, "_shiny_diagnosis.RDS"))
-    # DD$diagnosis <- diagnosis
-    # DD$designs <- diagnosis$design
-    # DD$args_code <- diagnosis$argument_list
   }, ignoreNULL=TRUE)
 
-  # observe({
-  #   query <- parseQueryString(session$clientData$url_search)
-  #   if (!is.null(query[['designer']])){
-  #     if (paste0(query[['designer']], "_designer") %in% ls(as.environment("package:DesignLibrary"))) {
-  #     # updateTextInput(session, "import_library_dropdown", value = query[['designer']])
-  #       e <- as.environment("package:DesignLibrary")
-  #       DD$design <- get(paste0(input$import_library_dropdown, "_designer"), e)
-  #       DD$precomputed <- TRUE
-  #       diagnosis <- readRDS(paste0("data/", input$import_library_dropdown, "_shiny_diagnosis.RDS"))
-  #       DD$diagnosis <- diagnosis$diagnosis
-  #       DD$args_code <- diagnosis$argument_list
-  #       session$sendCustomMessage(type = "closeModal", "#welcome_modal")
-  #   }}
-  # })
 
   #restrict to diagnosis for the parameters set in shiny `input`
   DD$shiny_args <- reactive({
@@ -469,183 +364,33 @@ inspector.server <- function(input, output, clientData, session) {
     return(diag)
   })
 
-  # args_code <- reactive({
-  #   DD$args_code[[as.numeric(gsub("design_", "", design_id()))]]
-  # })
-
-  # message("instantiating design...\n")
-  # # if(exists("DEBUG", globalenv())) browser()
-
   DD$design_instance <- reactive({
-    # DD$designs[[design_id()]]
-    # tryCatch(
     e <- environment()
     do.call(DD$design, DD$shiny_args(), envir = parent.env(e))
-    # , error=function(e) 9999999)
-    # if(identical(DD$design_instance, 9999999)) {
-    # DD$diagnosis <- NULL
-    #   # return() # bail out
-    # # }
   })
-
-  #
-  # DD$args_code <- diagnosis$argument_list
-  # DD$precomputed <- TRUE
-  # }
-
 
 
   output$print <- renderText(capture.output(names(input)))
 
-
-  # observeEvent({
-  #   input$run;
-  #   input$import_button
-  # },{
-  #   do_run()
-  # })
-  #
-  # do_run <- function() {
-  #   message("Run Button Clicked;\n")
-  #
-  #   design <- DD$design
-  #
-  #   DD$args <- list() #NOTE:uncomment
-  #   # DD$args <- formals(design)
-  #
-  #   # browser()
-  #   for(n in names(formals(design))){
-  #     DD$args[[n]] <- as.numeric(input[[paste0("d_", n)]])
-  #   }
-  #
-  #
-  #   message("instantiating design...\n")
-  #   if(exists("DEBUG", globalenv())) browser()
-  #   DD$design_instance <- tryCatch(do.call(design, attr(DD$design, "shiny_arguments")), error=function(e) 9999999)
-  #   if(identical(DD$design_instance, 9999999)) {
-  #     DD$diagnosis <- NULL
-  #     return() # bail out
-  #   }
-  #
-  #   if(!is.null(attr(DD$design_instance, "diagnosis"))){
-  #     DD$diagnosis <- attr(DD$design_instance, "diagnosis")
-  #     return()
-  #   }
-  #
-  #   message("Running diagnosis")
-  #   # browser()
-  #   withProgress(
-  #     DD$diagnosis <- diagnose_design(original_design=do.call(DD$design, list()),
-  #                                     updated_design=DD$design_instance,
-  #                                     sims = as.numeric(input$d_sims),
-  #                                     bootstrap = as.numeric(input$d_draws))
-  #   )
-  #
-
   output$diagnosticsPanel <-    DT::renderDataTable({
-    # message(Sys.time(), "a")
     diag_tab <- get_diagnosands(diagnosis = diagnosis_instance())
     if(DD$precomputed){
       diag_tab <- dplyr::select(diag_tab, -design_label, -n_sims)
     }
-    # rownames(diag_tab) <- diag_tab$estimand_label
-    # diag_tab <- round_df(diag_tab, 4)
-    # diag_tab
-    # message(Sys.time(), "b")
-    # on.exit(message(Sys.time(), "c"))
+
     pretty_diagnoses(diag_tab)
-    # as.data.frame(design_id())
   },
   options = list(orderClasses = TRUE, pageLength = 10,
                  scrollX = TRUE, width = 100,
                  rownames = FALSE, dom = "tlp"))
-
-  # NOTE: need to index simulations dependent on parameters chosen in each input$d_`arg`.
-  # create design_ID index
-  # can take design_ID index from the DD$diagnosis (and the columns that align with the parameters)
-
-  # observeEvent(input$import_library_dropdown,{
-  #   names <- names(attr(DD$design, "shiny_arguments"))
-  #   # design_id <- unique(DD$diagnosis$diagnosands$design_ID[DD$diagnosis$diagnosands[i]])
-  #   design_id <- which(
-  #     rowSums(sapply(names, FUN = function(i){
-  #       DD$diagnosis$diagnosands[i] == input[paste0("d_", i)][[1]]
-  #     })) == length(names))
-  #
-  # }, ignoreNULL=TRUE)
-
-  # sims <- observeEvent()
-  #
-  # sims <- reactive({
-  #   sims <- get_simulations(DD$diagnosis)
-  #
-  # })
-
-
-  # output$diagnosticsPlot <- renderPlot({
-  #   # message(Sys.time(), "a")
-  #
-  #   sims <- get_simulations(diagnosis_instance())
-  #   if("design_label" %in% names(sims)) sims <- subset(sims, design_label != "original_design")
-  #
-  #   # observeEvent(input$import_library) sims <- subset(sims, design_ID != "original_design")
-  #   # if("design_ID" %in% names(sims)) sims <- subset(sims, design_ID != "original_design")
-  #   sims$covered <- factor(1 + (sims$conf.low < sims$estimand & sims$estimand < sims$conf.high), 1:2,
-  #                          labels = c("Estimand not covered by confidence interval", "Estimand covered by confidence interval"))
-  #   sims$estimator_label <- as.factor(sims$estimator_label)
-  #   sims$estimand_label <- as.factor(sims$estimand_label)
-  #
-  #   # message(Sys.time(), "b")
-  #
-  #   # lowest <- min(sims$estimate)
-  #   # highest <- max(sims$estimate)
-  #   # browser()
-  #   # on.exit(message(Sys.time(), "exit"))
-  #
-  #   g <- ggplot(sims) + aes(x=estimate) +
-  #     # geom_density(aes(x=estimate, y=  (..count.. - min(..count..))/ (max(..count..) - min(..count..)) *   min(x),
-  #     #                  fill=covered, group=covered), alpha=.4, position='stack', color=NA) +
-  #     geom_errorbar(aes(ymin=conf.low, ymax=conf.high, color=covered), alpha=.4) +
-  #     # geom_point(aes(y=estimate), size=.5) +
-  #     # geom_point(aes(y=estimand, col=black), alpha=.8) +
-  #     geom_hline(aes(yintercept=mean(estimand))) +
-  #     geom_text(aes(x=x, y=y, label=label),
-  #               data=function(df){
-  #                 data.frame(x=min(df$estimate),
-  #                            y=mean(df$estimand),
-  #                            label=sprintf('  Avg Estimand:\n  %4.3f', mean(df$estimand)),
-  #                            stringsAsFactors = FALSE)
-  #               }, hjust='left') +
-  #     facet_wrap(estimand_label~estimator_label) + # this is issue
-  #     ylab("Estimate") +
-  #     scale_x_continuous(labels=NULL, breaks = NULL, name='') +
-  #     scale_color_discrete(drop=FALSE, name = '') +
-  #     # scale_fill_discrete(guide=FALSE)+
-  #     # coord_fixed() +
-  #     coord_flip() +
-  #     dd_theme()
-  #
-  #   # message(Sys.time(), "c")
-  #
-  #
-  #   print(g)
-  # })
 
   output$diagnosticPlot <- renderUI({
     plotOutput("user_defined_plot")
   })
 
   output$user_defined_plot <- renderPlot({
-
-    # browser()
-    # N_formal <- eval(formals(DD$design)$N)
-    # N_formal <- get_shiny_arguments(DD$design)$N
-
     args <- DD$shiny_args
-
     plotdf <- NULL
-
-    # browser()
     if(DD$precomputed){
       plotdf <- get_diagnosands(DD$diagnosis)
 
@@ -669,18 +414,6 @@ inspector.server <- function(input, output, clientData, session) {
 
 
     }
-    # else{
-    #   for(N in N_formal){
-    #     args$N <- N
-    #     d <- tryCatch(do.call(DD$design, args), error=function(e) NULL)
-    #     if(is.null(d)) next;
-    #     diag <- get_diagnosands(diagnoser(d))
-    #     diag$N <- N
-    #     plotdf <- rbind.data.frame(plotdf, diag, stringsAsFactors = FALSE)
-    #   }
-    # }
-
-    # plotdf$estimator_label <- paste("Power of", plotdf$estimator_label)
 
     if(input$import_library_dropdown %in% "mediation_analysis"){
       plotdf$estimator_label <- paste0(plotdf$estimator_label, " (", plotdf$coefficient, ")")
@@ -714,11 +447,8 @@ inspector.server <- function(input, output, clientData, session) {
 
   })
 
-
   output$simulationPanel <-    renderDataTable({
-    # sims_tab <- get_simulations(diagnosis = DD$diagnosis)
     sims_tab <- draw_data(DD$design_instance())
-    # rownames(diag_tab) <- diag_tab$estimand_label
     sims_tab <- round_df(sims_tab, 4)
     sims_tab
   }, options = list(searching = FALSE, ordering = FALSE, paging = TRUE, pageLength=10, info = FALSE, lengthChange= FALSE, scrollX = TRUE))
@@ -741,10 +471,6 @@ inspector.server <- function(input, output, clientData, session) {
   )
 
   output$summaryPanel  <- renderUI({
-    # pretty_summary(
-    # lapply(capture.output(summary(DD$design_instance())), tags$p)
-    #)
-
     pretty_summary(summary(DD$design_instance()))
 
   })
@@ -771,16 +497,6 @@ inspector.server <- function(input, output, clientData, session) {
       writeLines(DD$code(), file)
     }
   )
-
-  #here we need to change to read an Rmd files from the vignettes folder (check topics)
-  # output$vignette <- renderUI({
-  #   if(!requireNamespace("base64enc")) return()
-  #   # vig <- vignette(topic) # topic gets loaded to global environment via design library
-  #   vig <- vignette(input$import_library_dropdown) # topic gets loaded to global environment via design library
-  #   vightml <- base64enc::base64encode(file.path(vig$Dir, "doc", vig$PDF))
-  #   vightml <- sprintf('<iframe src="data:text/html;base64,%s" height="500px" width="100%%" frameborder=0 />', vightml   )
-  #   HTML(vightml)
-  # })
 
 }
 
