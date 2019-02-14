@@ -42,6 +42,9 @@ welcome[[3]] <-   shiny::tags$script("
 
 
 
+
+# Import designer function ------------------------------------------------
+
 ### Different types of import dialogs
 importLibrary <- material_card("Import from DesignLibrary",
                                uiOutput("import_library_ui"),
@@ -172,6 +175,7 @@ inspector.server <- function(input, output, clientData, session) {
   output$designParameters <- renderUI({
     design_fn <- req(DD$design)
     v <- get_shiny_arguments(design_fn)
+    definitions <- attr(design_fn, "definitions")
     f <- names(v)
     boxes <- list()
 
@@ -197,6 +201,7 @@ inspector.server <- function(input, output, clientData, session) {
 
     #NOTE: Here is where we would need to change to take the vignette that is saved/exported by the function called on design (@Jasper)
     boxes[[length(boxes) + 1]] <- downloadButton("download_design", "Export Design...")
+    print("Parameter inputs created")
     do.call(material_card, c(title="Design Parameters", boxes))
   })
 
@@ -241,8 +246,9 @@ inspector.server <- function(input, output, clientData, session) {
   output$coefficient <- renderUI({
     design_i <- req(DD$design_instance())
     estimates <- draw_estimates(design_i)
+    print("Loaded estimate names:")
+    print(names(estimates))
     if("term" %in% names(estimates)) coefficients <- estimates$term[estimates$estimator_label == input$estimator]
-    # coefficients <- draw_estimates(design_i)$term[draw_estimates(design_i)$estimator_label == input$estimator]
     else coefficients <- ""
     selectInput("coefficient", "Coefficient", choices = coefficients)
   })
@@ -257,6 +263,7 @@ inspector.server <- function(input, output, clientData, session) {
         DD$design <- get(paste0(query[['import_library']], "_designer"), e)
         DD$precomputed <- TRUE
         DD$diagnosis <- readRDS(paste0("data/", query[['import_library']], "_shiny_diagnosis.RDS"))
+        if(!is.null(DD$diagnosis)) message(paste0("Loaded ", query, " design diagnosis"))
         session$sendCustomMessage(type = "closeModal", "#welcome_modal")
 
         message("loaded sidefile")
@@ -275,6 +282,7 @@ inspector.server <- function(input, output, clientData, session) {
 
   output$diagnosticParameters <- renderUI({
     if(!DD$precomputed) diagnostic_params
+    else NULL
   })
 
   observeEvent(input$import_button, {
@@ -319,6 +327,7 @@ inspector.server <- function(input, output, clientData, session) {
     }
     DD$precomputed <- TRUE
     DD$diagnosis <- readRDS(paste0("data/", input$import_library_dropdown, "_shiny_diagnosis.RDS"))
+    if(!is.null(DD$diagnosis)) message(paste0("Loaded ", input$import_library_dropdown, " design diagnosis"))
   }, ignoreNULL=TRUE)
 
 
@@ -360,11 +369,13 @@ inspector.server <- function(input, output, clientData, session) {
       o
     })
     if(DD$precomputed) diag$diagnosands <- diag$diagnosands[,!names(diag$diagnosands) %in% names(get_shiny_arguments(DD$design))]
+    print("Loaded diagnosis instance")
     return(diag)
   })
 
   DD$design_instance <- reactive({
     e <- environment()
+    print("`design_instance` created")
     do.call(DD$design, DD$shiny_args(), envir = parent.env(e))
   })
 
@@ -421,13 +432,14 @@ inspector.server <- function(input, output, clientData, session) {
     plotdf$diagnosand <- plotdf[[input$diag_param]]
     plotdf$diagnosand_min <- plotdf[[input$diag_param]] - 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
     plotdf$diagnosand_max <- plotdf[[input$diag_param]] + 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
-    plotdf$x_param <- plotdf[[input$x_param]]
+    plotdf$x_param <- as.numeric(paste0(plotdf[[input$x_param]]))
     ifelse(input$opt_param != "(none)", plotdf$opt_param <- as.factor(plotdf[[input$opt_param]]), plotdf$opt_param <- NA)
 
     if(input$opt_param != "(none)"){
       p <- ggplot(plotdf) +
         aes(x=x_param, y=diagnosand, ymin=diagnosand_min, ymax=diagnosand_max,
-            group=opt_param, color=opt_param, fill=opt_param)
+            group=opt_param, color=opt_param, fill=opt_param) +
+        geom_line()
 
     }else{
       p <- ggplot(plotdf) +
@@ -435,10 +447,7 @@ inspector.server <- function(input, output, clientData, session) {
     }
 
     p <- p +
-      geom_line() +
-      geom_point() +
-      # geom_ribbon(alpha=.3) +
-      # scale_color_discrete() +
+      geom_point(na.rm = TRUE) +
       scale_y_continuous(name=input$diag_param) + #, limits=0:1, breaks=0:4/4, minor_breaks = 0:10/10) +
       dd_theme() +  labs(fill=input$opt_param,color=input$opt_param, x = input$x_param)
 
