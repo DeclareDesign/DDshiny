@@ -188,10 +188,9 @@ inspector.server <- function(input, output, clientData, session) {
       }
     }
 
-
-    if(length(attr(DD$design, "tips")) == length(f)){
+    if(!is.null(definitions) && all(f %in% definitions$names)){
       for(i in seq_along(f)){
-        boxes[[i]] <- my_tipify(boxes[[i]], attr(DD$design, "tips")[i])
+        boxes[[i]] <- my_tipify(boxes[[i]], definitions$tips[definitions$names == f[i]])
       }
     }
 
