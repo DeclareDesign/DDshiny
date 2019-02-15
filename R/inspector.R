@@ -163,6 +163,8 @@ inspector.server <- function(input, output, clientData, session) {
 
   # create reactive values of DD --------------------------------------------
 
+  options(warn = 1)    # always directly print warnings
+
   DD <-   reactiveValues(design = NULL,
                          # design_instance=NULL,
                          diagnosis=NULL, code="",
@@ -198,12 +200,14 @@ inspector.server <- function(input, output, clientData, session) {
       }
     }
 
-
-    #NOTE: Here is where we would need to change to take the vignette that is saved/exported by the function called on design (@Jasper)
-    boxes[[length(boxes) + 1]] <- downloadButton("download_design", "Export Design...")
+    boxes[[length(boxes) + 1]] <- downloadButton("download_design", "Export Design")
     print("Parameter inputs created")
     do.call(material_card, c(title="Design Parameters", boxes))
   })
+
+
+
+# create plot input parameters --------------------------------------------
 
   output$plotParameters <- renderUI({
     design_fn <- req(DD$design)
@@ -227,8 +231,12 @@ inspector.server <- function(input, output, clientData, session) {
     for(i in 1:length(boxes)){
       boxes[[i]] <- my_tipify(boxes[[i]], tips[i])
     }
+    print("Plot parameters created")
     do.call(material_card, c(title="Plot Parameters", boxes))
   })
+
+
+# plot estimator, diagnosand, optional parameter -------------------------
 
   output$estimator <- renderUI({
     design_i <- req(DD$design_instance())
@@ -246,8 +254,6 @@ inspector.server <- function(input, output, clientData, session) {
   output$coefficient <- renderUI({
     design_i <- req(DD$design_instance())
     estimates <- draw_estimates(design_i)
-    print("Loaded estimate names:")
-    print(names(estimates))
     if("term" %in% names(estimates)) coefficients <- estimates$term[estimates$estimator_label == input$estimator]
     else coefficients <- ""
     selectInput("coefficient", "Coefficient", choices = coefficients)
@@ -280,11 +286,6 @@ inspector.server <- function(input, output, clientData, session) {
   })
 
 
-  output$diagnosticParameters <- renderUI({
-    if(!DD$precomputed) diagnostic_params
-    else NULL
-  })
-
   observeEvent(input$import_button, {
     # req(input$import_file_button)
     design <- isolate(DD$design)
@@ -299,31 +300,22 @@ inspector.server <- function(input, output, clientData, session) {
       # loadDesign(output, design)
     }
   }, ignoreNULL = FALSE)
-  observeEvent(input$import_file1, {
-    DD$design <- readRDS(input$import_file1$datapath)
-    DD$precomputed <- FALSE
 
-    # str(DD$design)
-  }, ignoreNULL = TRUE)
-  observeEvent(input$import_url_txt, {
-    DD$design <- input$import_url_txt
-    DD$precomputed <- FALSE
 
-    str(DD$design)
-  }, ignoreNULL = TRUE)
+# load designers in the library with shiny attributes ---------------------
 
-  #NOTE: HERE WE ARE DRAWING DESIGN LIBRARIES FROM THE DesignLibrary folder (currently local)
   output$import_library_ui <- renderUI({
-    cached <- str_replace(grep("designer$", ls(as.environment("package:DesignLibrary")), value = TRUE), "_designer", "")
-    cached <- intersect(cached, gsub("_shiny_diagnosis.RDS", "", list.files("data", pattern = ".RDS")))
-    names(cached) <- unique(str_to_title(str_replace_all(str_replace(basename(cached), "[.]R$", ""), "_", " ")))
-    selectInput("import_library_dropdown", "Library:", cached)
+    designers <- str_replace(grep("designer$", ls(as.environment("package:DesignLibrary")), value = TRUE), "_designer", "")
+    shiny_designers <- intersect(designers, gsub("_shiny_diagnosis.RDS", "", list.files("data", pattern = ".RDS")))
+    names(shiny_designers) <- unique(str_to_title(str_replace_all(str_replace(basename(shiny_designers), "[.]R$", ""), "_", " ")))
+    selectInput("import_library_dropdown", "Library:", shiny_designers)
   })
 
   observeEvent(input$import_library_dropdown,{
     if(paste0(input$import_library_dropdown, "_designer") %in% ls(as.environment("package:DesignLibrary"))){ #NOTE: change this here
       e <- as.environment("package:DesignLibrary")
       DD$design <- get(paste0(input$import_library_dropdown, "_designer"), e)
+      message(paste0("Loaded ", input$import_library_dropdown, "_designer"))
     }
     DD$precomputed <- TRUE
     DD$diagnosis <- readRDS(paste0("data/", input$import_library_dropdown, "_shiny_diagnosis.RDS"))
@@ -331,22 +323,31 @@ inspector.server <- function(input, output, clientData, session) {
   }, ignoreNULL=TRUE)
 
 
-  #restrict to diagnosis for the parameters set in shiny `input`
+
+# shiny inputs ------------------------------------------------------------
+
   DD$shiny_args <- reactive({
-    args <- list()#formals(DD$design)[-length(formals(DD$design))]
+    args <- list()
     for(n in names(get_shiny_arguments(DD$design))){
       args[[n]] <- as.numeric(input[[paste0("d_", n)]])
     }
+    print("Using following arguments:")
+    print(args)
     args
   })
 
+# all designer inputs -----------------------------------------------------
+
   DD$all_args <- reactive({
-    args <- formals(DD$design)#formals(DD$design)[-length(formals(DD$design))]
+    args <- formals(DD$design)
     for(n in intersect(names(formals(DD$design)), sub("d_", "", names(input)))){
       args[[n]] <- as.numeric(input[[paste0("d_", n)]])
     }
     args
   })
+
+
+# identify designer label -------------------------------------------------
 
   design_id <- reactive({
     if(DD$precomputed){
@@ -361,6 +362,9 @@ inspector.server <- function(input, output, clientData, session) {
     }
   })
 
+
+# isolate diagnosis from specific parameter combination -------------------
+
   diagnosis_instance <- reactive({
     diag <- lapply(DD$diagnosis, function(o){
       if(is.data.frame(o)){
@@ -373,6 +377,9 @@ inspector.server <- function(input, output, clientData, session) {
     return(diag)
   })
 
+
+# generate design from input args -----------------------------------------
+
   DD$design_instance <- reactive({
     e <- environment()
     print("`design_instance` created")
@@ -380,7 +387,7 @@ inspector.server <- function(input, output, clientData, session) {
   })
 
 
-  output$print <- renderText(capture.output(names(input)))
+# diagnosis table panel ---------------------------------------------------
 
   output$diagnosticsPanel <-    DT::renderDataTable({
     diag_tab <- get_diagnosands(diagnosis = diagnosis_instance())
@@ -394,6 +401,9 @@ inspector.server <- function(input, output, clientData, session) {
                  scrollX = TRUE, width = 100,
                  rownames = FALSE, dom = "tlp"))
 
+
+# diagnosis plot panel ----------------------------------------------------
+
   output$diagnosticPlot <- renderUI({
     plotOutput("user_defined_plot")
   })
@@ -406,10 +416,12 @@ inspector.server <- function(input, output, clientData, session) {
 
       #restrict to cases where all other parameters match input
       fix_arg <- names(get_shiny_arguments(DD$design))[!names(get_shiny_arguments(DD$design)) %in% c(input$x_param, input$opt_param)]
+      print("restricting")
 
       for(col in fix_arg){
         plotdf <- plotdf[plotdf[[col]]==input[[paste0("d_",col)]],]
       }
+      print("restricted")
 
       #further restrict to estimator chosen
       estimator <- input$estimator #trimws(gsub(".*?[)]$", "", input$estimator), which = "both")
@@ -433,7 +445,7 @@ inspector.server <- function(input, output, clientData, session) {
     plotdf$diagnosand_min <- plotdf[[input$diag_param]] - 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
     plotdf$diagnosand_max <- plotdf[[input$diag_param]] + 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
     plotdf$x_param <- as.numeric(paste0(plotdf[[input$x_param]]))
-    ifelse(input$opt_param != "(none)", plotdf$opt_param <- as.factor(plotdf[[input$opt_param]]), plotdf$opt_param <- NA)
+    plotdf$opt_param <- ifelse(input$opt_param != "(none)", as.factor(plotdf[[input$opt_param]]), NA)
 
     if(input$opt_param != "(none)"){
       p <- ggplot(plotdf) +
@@ -455,6 +467,9 @@ inspector.server <- function(input, output, clientData, session) {
 
   })
 
+
+#  simulation data panel --------------------------------------------------
+
   output$simulationPanel <-    renderDataTable({
     sims_tab <- draw_data(DD$design_instance())
     sims_tab <- round_df(sims_tab, 4)
@@ -465,11 +480,11 @@ inspector.server <- function(input, output, clientData, session) {
     if(!is.null(attr(DD$design_instance(), "code"))){
       code <- attr(DD$design_instance(), "code")
       paste(code, collapse = "\n")
-    } else if(requireNamespace("pryr")){
-      code <- paste(deparse(pryr::substitute_q(body(DD$design), DD$all_args())), collapse="\n")
-      gsub("[{]\n|\n[}]|[}]\n]", "", code) # remove surounding curly
-    }
-  })
+    } else NULL
+    })
+
+
+# description panel -------------------------------------------------------
 
   output$descriptionPanel <- renderUI(HTML(attr(DD$design, "description")))
 
@@ -478,15 +493,20 @@ inspector.server <- function(input, output, clientData, session) {
     HTML("Author: DeclareDesign Team")
   )
 
+# summary panel -----------------------------------------------------------
+
   output$summaryPanel  <- renderUI({
     pretty_summary(summary(DD$design_instance()))
 
   })
 
+# code panel --------------------------------------------------------------
+
   output$codePanel     <- renderText(DD$code())
 
 
-  # NOTE: These two options are from function in DDtools that export the design instance and code for specific parameters
+
+# download buttons --------------------------------------------------------
 
   output$download_design <- downloadHandler(
     filename=function() {
