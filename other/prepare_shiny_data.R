@@ -3,9 +3,10 @@ library(ShinyDeclareDesign)
 
 functions <- ls("package:DesignLibrary")
 designers <- functions[grepl("_designer\\b",functions)]
-sims <- 10
-bootstraps <- 10
 designers <- designers[!grepl("^simple", designers)] #remove deprecated designer functions
+sims <- 500
+bootstraps <- 100
+
 #temporary because of bug with diagnose_design
 designers <- setdiff(designers, c("multi_arm_designer"))
 
@@ -30,4 +31,3 @@ for(designer in designers){
   }
   print(designer)
 }
-
