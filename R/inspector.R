@@ -239,8 +239,10 @@ inspector.server <- function(input, output, clientData, session) {
 # plot estimator, diagnosand, optional parameter -------------------------
 
   output$estimator <- renderUI({
-    design_i <- req(DD$design_instance())
-    selectInput("estimator", "Estimator Label", choices = unique(draw_estimates(design_i)$estimator_label))
+    estimator_labels <- unique(diagnoses()$estimator_label)
+    estimator_labels <- setdiff(estimator_labels, NA)
+    selectInput("estimator", "Estimator Label",
+                choices = estimator_labels)
   })
 
   output$diag_param <- renderUI({
@@ -252,12 +254,27 @@ inspector.server <- function(input, output, clientData, session) {
 
 
   output$coefficient <- renderUI({
-    design_i <- req(DD$design_instance())
-    estimates <- draw_estimates(design_i)
-    if("term" %in% names(estimates)) coefficients <- estimates$term[estimates$estimator_label == input$estimator]
-    else coefficients <- ""
-    selectInput("coefficient", "Coefficient", choices = coefficients)
+
+    if("term" %in% names(DD$diagnosis$diagnosands_df)){
+      diagnosands_instance <- diagnosis_instance()$diagnosands_df
+      estimator_labels <- unique(diagnosands_instance$estimator_label)
+      # print(paste("estimator labels:", estimator_labels))
+      coefficients <- unique(diagnosands_instance$term[diagnosands_instance$estimator_label == estimator_labels[1]])
+      coefficients <- setdiff(coefficients, NA)
+    } else {
+      coefficients <- ""
+    }
+    # print(paste("coefficient", coefficients))
+    selectInput("coefficient", "Coefficient", choices = coefficients, selected = coefficients[1])
   })
+
+  observeEvent(input$estimator, {
+    diagnosands_instance <- diagnosis_instance()$diagnosands_df
+    coefficients <- unique(diagnosands_instance$term[diagnosands_instance$estimator_label == input$estimator])
+    coefficients <- setdiff(coefficients, NA)
+    updateSelectInput(session, "coefficient", choices = coefficients, selected = coefficients[1])
+    })
+
 
   #REVIEW
   output$welcome <- renderUI({
@@ -352,13 +369,15 @@ inspector.server <- function(input, output, clientData, session) {
   design_id <- reactive({
     if(DD$precomputed){
       shiny_args <- names(get_shiny_arguments(DD$design))
-      t <- c()
+      t <- 1:nrow(DD$diagnosis$diagnosands_df)
       for(n in shiny_args){
-        v <- which(DD$diagnosis$diagnosands[[n]] == as.numeric(input[[paste0("d_", n)]]))
-        v <- DD$diagnosis$diagnosands$design_label[v]
-        t <- c(t, v)
+        v <- which(DD$diagnosis$diagnosands_df[[n]] == as.numeric(input[[paste0("d_", n)]]))
+        # v <- DD$diagnosis$diagnosands_df$design_label[v]
+        t <- intersect(t, v)
       }
-      Mode(t)
+      id <- unique(DD$diagnosis$diagnosands_df$design_label[t])
+      print(paste0("design_id: ", id))
+      Mode(id)
     }
   })
 
@@ -368,7 +387,7 @@ inspector.server <- function(input, output, clientData, session) {
   diagnosis_instance <- reactive({
     diag <- lapply(DD$diagnosis, function(o){
       if(is.data.frame(o)){
-        o <- o[o$design_label == paste0("design_", design_id()),]
+        o <- o[o$design_label == design_id(),]
       }
       o
     })
@@ -376,7 +395,6 @@ inspector.server <- function(input, output, clientData, session) {
     print("Loaded diagnosis instance")
     return(diag)
   })
-
 
 # generate design from input args -----------------------------------------
 
@@ -408,60 +426,105 @@ inspector.server <- function(input, output, clientData, session) {
     plotOutput("user_defined_plot")
   })
 
-  output$user_defined_plot <- renderPlot({
-    args <- DD$shiny_args
-    plotdf <- NULL
+  # create a reactive function that takes inputs and creates a data.frame for plot
+  # plot data frame reacts to changes in input
+
+  diagnoses <- reactive({
+    if(DD$precomputed) get_diagnosands(DD$diagnosis)
+    else NULL
+  })
+
+  data_for_plot <- reactive({
     if(DD$precomputed){
-      plotdf <- get_diagnosands(DD$diagnosis)
+
+      plotdf <- diagnoses()
 
       #restrict to cases where all other parameters match input
       fix_arg <- names(get_shiny_arguments(DD$design))[!names(get_shiny_arguments(DD$design)) %in% c(input$x_param, input$opt_param)]
-      print("restricting")
+      # print("restricting")
 
       for(col in fix_arg){
         plotdf <- plotdf[plotdf[[col]]==input[[paste0("d_",col)]],]
       }
-      print("restricted")
+      # print("restricted")
 
-      #further restrict to estimator chosen
-      estimator <- input$estimator #trimws(gsub(".*?[)]$", "", input$estimator), which = "both")
-      coefficient <- input$coefficient #regmatches(input$estimator, gregexpr("(?<=\\().*?(?=\\))", input$estimator, perl=T))[[1]][1]
-
+      #further restrict to estimator and term chosen
       if(input$coefficient!=""){
-        plotdf <- plotdf[plotdf$estimator_label == estimator &
-                           plotdf$term == coefficient,]
+        plotdf <- plotdf[plotdf$estimator_label == input$estimator &
+                           plotdf$term == input$coefficient,]
       }else{
-        plotdf <- plotdf[plotdf$estimator_label == estimator,]
+        plotdf <- plotdf[plotdf$estimator_label == input$estimator,]
       }
 
+      if(input$import_library_dropdown %in% "mediation_analysis"){
+        plotdf$estimator_label <- paste0(plotdf$estimator_label, " (", plotdf$coefficient, ")")
+      }
 
+      plotdf$diagnosand <- plotdf[[input$diag_param]]
+      plotdf$diagnosand_min <- plotdf[[input$diag_param]] - 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
+      plotdf$diagnosand_max <- plotdf[[input$diag_param]] + 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
+      plotdf$x_param <- as.numeric(paste0(plotdf[[input$x_param]]))
+
+    } else {
+      plotdf <- NULL
     }
 
-    if(input$import_library_dropdown %in% "mediation_analysis"){
-      plotdf$estimator_label <- paste0(plotdf$estimator_label, " (", plotdf$coefficient, ")")
+    plotdf
+  })
+
+  output$user_defined_plot <- renderPlot({
+    plotdf <- data_for_plot()
+
+    # base aesthetics for line plot
+    aes_args <- list(
+      'x' = 'x_param',
+      'y' = 'diagnosand',
+      'ymin' = 'diagnosand_min',
+      'ymax' = 'diagnosand_max'
+
+    )
+
+    # if the "color" parameter is set, add it to the aeshetics definition
+    if (isTruthy(input$opt_param) && input$opt_param != '(none)') {
+      plotdf[[input$opt_param]] <- factor(plotdf[[input$opt_param]])
+      aes_args$color <- input$opt_param
+      aes_args$fill <- input$opt_param
+      aes_args$group <- input$opt_param
+    } else {
+      aes_args$group <- 1
     }
 
-    plotdf$diagnosand <- plotdf[[input$diag_param]]
-    plotdf$diagnosand_min <- plotdf[[input$diag_param]] - 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
-    plotdf$diagnosand_max <- plotdf[[input$diag_param]] + 1.96*plotdf[[paste0("se(", input$diag_param, ")")]]
-    plotdf$x_param <- as.numeric(paste0(plotdf[[input$x_param]]))
-    plotdf$opt_param <- ifelse(input$opt_param != "(none)", as.factor(plotdf[[input$opt_param]]), NA)
+    # create aesthetics definition
+    aes_definition <- do.call(aes_string, aes_args)
 
-    if(input$opt_param != "(none)"){
-      p <- ggplot(plotdf) +
-        aes(x=x_param, y=diagnosand, ymin=diagnosand_min, ymax=diagnosand_max,
-            group=opt_param, color=opt_param, fill=opt_param) +
-        geom_line()
+    p <- ggplot(plotdf, aes_definition) +
+      geom_line() +
+      geom_point() +
+      scale_y_continuous(name = input$diag_param) +
+      dd_theme() +
+      labs(x = input$x_param)
 
-    }else{
-      p <- ggplot(plotdf) +
-        aes(x=x_param, y=diagnosand, ymin=diagnosand_min, ymax=diagnosand_max)
+    # add confidence interval if requested
+    if (isTruthy(input$confi_int_id)) {
+      p <- p + geom_ribbon(alpha = 0.25, color = 'white')
     }
 
-    p <- p +
-      geom_point(na.rm = TRUE) +
-      scale_y_continuous(name=input$diag_param) + #, limits=0:1, breaks=0:4/4, minor_breaks = 0:10/10) +
-      dd_theme() +  labs(fill=input$opt_param,color=input$opt_param, x = input$x_param)
+    # if(input$opt_param != "(none)"){
+    #   p <- ggplot(plotdf) +
+    #     aes(x=x_param, y=diagnosand, ymin=diagnosand_min, ymax=diagnosand_max,
+    #         group=opt_param, color=opt_param, fill=opt_param) +
+    #     geom_line() +
+    #     labs(fill=input$opt_param,color=input$opt_param)
+    #
+    # }else{
+    #   p <- ggplot(plotdf) +
+    #     aes(x=x_param, y=diagnosand, ymin=diagnosand_min, ymax=diagnosand_max)
+    # }
+    #
+    # p <- p +
+    #   geom_point(na.rm = TRUE) +
+    #   scale_y_continuous(name=input$diag_param) + #, limits=0:1, breaks=0:4/4, minor_breaks = 0:10/10) +
+    #   dd_theme() +  labs(x = input$x_param)
 
     p
 

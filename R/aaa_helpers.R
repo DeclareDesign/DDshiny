@@ -73,7 +73,7 @@ get_or_run_shiny_diagnosis <- function(designer,designer_name = NULL,sims,bootst
   design_name <- gsub(pattern = "_designer",replacement = "",x = designer_name)
   file_name <- paste0("data/",design_name,"_shiny_diagnosis.RDS")
   parameters <- expand.grid(get_shiny_arguments(designer), stringsAsFactors = FALSE)
-  if(update_existing==FALSE & file.exists(file_name)){
+  if(update_existing==FALSE && file.exists(file_name)){
     diagnosis <- readRDS(file = file_name)
     # diagnosis <- diagnosis_list
   } else {
@@ -135,7 +135,7 @@ diagnosis_plot <- function(diagnostic_param){
     aes(x=, y=param_value, ymin=param-2*param_se, ymax=power+2*param_se,
         group=estimator_label, color=estimator_label, fill=estimator_label) +
     geom_line() +
-    geom_point() +
+    geom_point(na.rm = TRUE) +
     geom_ribbon(alpha=.3) +
     scale_y_continuous(name="Power of Design", limits=0:1, breaks=0:4/4, minor_breaks = 0:10/10) +
     dd_theme() +  labs(fill="",color="")
@@ -272,7 +272,7 @@ dd_theme <-
         panel.grid.major = element_line(color = '#eeeeee'),
         strip.background = element_blank(),
         legend.position = "bottom",
-        text = element_text(family = "Palatino", size=16)
+        text = element_text(size=16)#family = "Palatino")
       )
   }
 
